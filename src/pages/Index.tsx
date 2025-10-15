@@ -201,9 +201,7 @@ Return ONLY a JSON object in this exact format:
 
         {/* About Section */}
         <div className="mt-12 text-center text-sm text-muted-foreground animate-fade-in" style={{ animationDelay: "0.3s" }}>
-          <p>
-            This tool generates AI-based legal questions focusing on Indian law for study or test preparation.
-          </p>
+         
         </div>
       </div>
     </div>

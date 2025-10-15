@@ -4,6 +4,8 @@ import { Card } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
 import { Loader2, Copy, Scale } from "lucide-react";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
 
 const GEMINI_API_KEY = "AIzaSyD3fr9PEgxZyC4muVphMt5n9qtyvq77Hlc";
 
@@ -15,7 +17,10 @@ const TOPICS = [
 
 const Index = () => {
   const [selectedTopic, setSelectedTopic] = useState<string>("");
-  const [questions, setQuestions] = useState<string[]>([]);
+  type Mcq = { question: string; options: string[]; correctIndex: number };
+  type McqApi = { question: string; options: string[]; correctIndex: number };
+  const [mcqs, setMcqs] = useState<Mcq[]>([]);
+  const [answers, setAnswers] = useState<Record<number, number>>({});
   const [loading, setLoading] = useState(false);
 
   const generateQuestions = async () => {
@@ -25,7 +30,8 @@ const Index = () => {
     }
 
     setLoading(true);
-    setQuestions([]);
+    setMcqs([]);
+    setAnswers({});
 
     const topicContext = {
       "child-abuse": "Child Abuse under Indian Penal Code (IPC) and child protection laws",
@@ -33,25 +39,26 @@ const Index = () => {
       "pocso": "Protection of Children from Sexual Offences Act (POCSO), 2012"
     };
 
-    const systemPrompt = `You are an AI Question Generator specialized in Indian Law.
+    const systemPrompt = `You are an AI MCQ Generator specialized in Indian Law.
 
-Generate 5 diverse, factually correct, and exam-level questions based ONLY on Indian law for the topic: ${topicContext[selectedTopic as keyof typeof topicContext]}.
+Generate 5 diverse, factually correct, exam-level multiple-choice questions based ONLY on Indian law for the topic: ${topicContext[selectedTopic as keyof typeof topicContext]}.
 
 Rules:
-1. All questions must be related ONLY to Indian legal context
-2. Do NOT mention or refer to international or foreign laws
-3. Each question must be grammatically correct, factually accurate, and clearly written
-4. Focus on relevant Indian legal provisions and acts
-5. Self-check each question for factual accuracy
+1. All questions must be related ONLY to Indian legal context.
+2. Do NOT mention or refer to international or foreign laws.
+3. Each question must be grammatically correct, factually accurate, and clearly written.
+4. Focus on relevant Indian legal provisions and acts; avoid ambiguous options.
+5. Provide exactly 4 options per question; only one correct answer.
+6. Self-check each question and answer for factual accuracy.
 
 Return ONLY a JSON object in this exact format:
 {
   "questions": [
-    "Question 1...",
-    "Question 2...",
-    "Question 3...",
-    "Question 4...",
-    "Question 5..."
+    { "question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 2 },
+    { "question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0 },
+    { "question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 3 },
+    { "question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 1 },
+    { "question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 2 }
   ]
 }`;
 
@@ -101,8 +108,25 @@ Return ONLY a JSON object in this exact format:
         throw new Error("Invalid questions format");
       }
 
-      setQuestions(parsedData.questions);
-      toast.success("Questions generated successfully!");
+      const normalized: Mcq[] = parsedData.questions.map((q: McqApi) => {
+        if (
+          !q ||
+          typeof q.question !== "string" ||
+          !Array.isArray(q.options) ||
+          q.options.length !== 4 ||
+          typeof q.correctIndex !== "number"
+        ) {
+          throw new Error("Received MCQ in unexpected format");
+        }
+        return {
+          question: q.question,
+          options: q.options,
+          correctIndex: q.correctIndex,
+        } as Mcq;
+      });
+
+      setMcqs(normalized);
+      toast.success("MCQs generated successfully!");
     } catch (error) {
       console.error("Error generating questions:", error);
       const errorMessage = error instanceof Error ? error.message : "Unknown error";
@@ -113,9 +137,15 @@ Return ONLY a JSON object in this exact format:
   };
 
   const copyAllQuestions = () => {
-    const text = questions.map((q, i) => `${i + 1}. ${q}`).join("\n\n");
+    const text = mcqs
+      .map((q, i) => {
+        const options = q.options.map((opt: string, idx: number) => `   ${String.fromCharCode(65 + idx)}. ${opt}`).join("\n");
+        const answer = `Answer: ${String.fromCharCode(65 + q.correctIndex)}`;
+        return `${i + 1}. ${q.question}\n${options}\n${answer}`;
+      })
+      .join("\n\n");
     navigator.clipboard.writeText(text);
-    toast.success("Questions copied to clipboard!");
+    toast.success("MCQs copied to clipboard!");
   };
 
   return (
@@ -174,7 +204,7 @@ Return ONLY a JSON object in this exact format:
         </Card>
 
         {/* Results */}
-        {questions.length > 0 && (
+        {mcqs.length > 0 && (
           <Card className="p-8 animate-fade-in">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-2xl font-bold text-foreground">Generated Questions</h2>
@@ -184,15 +214,44 @@ Return ONLY a JSON object in this exact format:
               </Button>
             </div>
             <div className="space-y-4">
-              {questions.map((question, index) => (
+              {mcqs.map((item, index) => (
                 <div
-                  key={index}
+                  key={`${item.question}-${index}`}
                   className="p-4 rounded-lg bg-muted/50 border border-border hover:border-primary/50 transition-colors"
                 >
-                  <p className="text-foreground">
+                  <p className="text-foreground mb-3">
                     <span className="font-semibold text-primary mr-2">{index + 1}.</span>
-                    {question}
+                    {item.question}
                   </p>
+                  <RadioGroup
+                    value={answers[index]?.toString() ?? ""}
+                    onValueChange={(val) => {
+                      const selected = parseInt(val, 10);
+                      setAnswers((prev) => ({ ...prev, [index]: selected }));
+                    }}
+                    className="gap-3"
+                  >
+                    {item.options.map((opt, optIdx) => {
+                      const id = `q${index}-opt${optIdx}`;
+                      const selected = answers[index];
+                      const isCorrect = selected !== undefined && optIdx === item.correctIndex;
+                      const isSelected = selected === optIdx;
+                      const showFeedback = selected !== undefined;
+                      return (
+                        <div key={`${item.question}-${optIdx}`} className="flex items-center space-x-3 p-2 rounded-md hover:bg-muted/40">
+                          <RadioGroupItem id={id} value={optIdx.toString()} />
+                          <Label htmlFor={id} className="cursor-pointer">
+                            {String.fromCharCode(65 + optIdx)}. {opt}
+                          </Label>
+                          {showFeedback && isSelected && (
+                            <span className={isCorrect ? "ml-2 text-green-600" : "ml-2 text-red-600"}>
+                              {isCorrect ? "Correct" : "Incorrect"}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </RadioGroup>
                 </div>
               ))}
             </div>
